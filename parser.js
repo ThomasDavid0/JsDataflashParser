@@ -597,7 +597,7 @@ class DataflashParser {
         }
 
         const has_instance = "InstancesOffsetArray" in msg_FMT
-        console.log(name, has_instance ? 'has instances' : 'has no instances')
+        //console.log(name, has_instance ? 'has instances' : 'has no instances')
 
         if (has_instance) {
             // Parse instances
@@ -1091,8 +1091,8 @@ self.addEventListener('message', function (event) {
         console.log('got bad file message!')
     } else if (event.data.action === 'parse') {
         parser = new DataflashParser(true)
-        const data = event.data.file
-        parser.processData(data)
+        
+        parser.processData(event.data.file, event.data.msgs)
     } else if (event.data.action === 'loadType') {
         parser.loadType(event.data.type.split('[')[0])
     } else if (event.data.action === 'trimFile') {
