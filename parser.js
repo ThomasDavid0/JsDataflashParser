@@ -1069,7 +1069,7 @@ class DataflashParser {
 
 		if (this.send_postMessage) {
 			const metadata = {
-				startTime: this.extractStartTime()
+				bootTime: this.extractStartTime()
 			};
 			self.postMessage({ metadata: metadata });
 			self.postMessage({ messagesDoneLoading: true });
