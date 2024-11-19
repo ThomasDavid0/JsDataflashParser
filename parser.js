@@ -469,7 +469,7 @@ class DataflashParser {
             return
         }
 
-        if (instance && !(("InstancesOffsetArray" in msg_FMT) && (instance in msg_FMT.InstancesOffsetArray))) {
+        if ((instance != null) && !(("InstancesOffsetArray" in msg_FMT) && (instance in msg_FMT.InstancesOffsetArray))) {
             // instance given but no instances or don't have the given instance
             return
         }
