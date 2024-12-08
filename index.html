@@ -7,24 +7,24 @@
     // output messages from worker
     worker.onmessage = (event) => {
         if (event.data.hasOwnProperty('percentage')) {
-            console.log(`percentage: ${event.data.percentage}`)
+            console.debug(`percentage: ${event.data.percentage}`)
         } else if (event.data.hasOwnProperty('availableMessages')) {
-            console.log('Available message types:')
-            console.log(event.data.availableMessages)
+            console.debug('Available message types:')
+            console.debug(event.data.availableMessages)
         } else if (event.data.hasOwnProperty('metadata')) {
-            console.log('got metadata:')
-            console.log(event.data.metadata)
+            console.debug('got metadata:')
+            console.debug(event.data.metadata)
         } else if (event.data.hasOwnProperty('messages')) {
-            console.log('got messages')
-            console.log(event.data.messages)
+            console.debug('got messages')
+            console.debug(event.data.messages)
         } else if (event.data.hasOwnProperty('messageType')) {
-            console.log(`got list of ${event.data.messageType}:`)
-            console.log(event.data.messageList)
+            console.debug(`got list of ${event.data.messageType}:`)
+            console.debug(event.data.messageList)
         } else if (event.data.hasOwnProperty('files')) {
-            console.log('got files:')
-            console.log(event.data.files)
+            console.debug('got files:')
+            console.debug(event.data.files)
         } else if (event.data.hasOwnProperty('messagesDoneLoading')) {
-            console.log('messages finished loading')
+            console.debug('messages finished loading')
         }
     }
 
@@ -35,7 +35,7 @@
         let reader = new FileReader()
         reader.onload = function (e) {
             let arrayBuffer = new Uint8Array(reader.result)
-            console.log(arrayBuffer)
+            console.debug(arrayBuffer)
             let data = reader.result
             worker.postMessage({
                 action: 'parse',
