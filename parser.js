@@ -97,6 +97,8 @@ const modeMappingRover = {
 	5: 'LOITER',
 	6: 'FOLLOW',
 	7: 'SIMPLE',
+	8: 'DOCK',
+	9: 'CIRCLE',
 	10: 'AUTO',
 	11: 'RTL',
 	12: 'SMART_RTL',
@@ -478,7 +480,7 @@ class DataflashParser {
 		}
 
 		if (
-			instance &&
+			instance !== null &&
 			!('InstancesOffsetArray' in msg_FMT && instance in msg_FMT.InstancesOffsetArray)
 		) {
 			// instance given but no instances or don't have the given instance
@@ -1019,7 +1021,12 @@ class DataflashParser {
 		this.data = new DataView(this.buffer);
 		this.DfReader();
 		const messageTypes = {};
-		this.populateUnits();
+		try {
+			this.populateUnits();
+		} catch (e) {
+			console.log('error populating units');
+			console.log(e);
+		}
 		for (const msg of this.FMT) {
 			if (msg && msg.Total_Length != 0) {
 				const fields = msg.Columns;
