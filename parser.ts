@@ -1,6 +1,7 @@
-/* eslint-disable no-unused-vars */
-/* eslint-disable no-var */
-/* eslint-disable no-prototype-builtins */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable prefer-const */
+
 const MAV_TYPE_GENERIC = 0; // Generic micro air vehicle.
 const MAV_TYPE_FIXED_WING = 1; // Fixed wing aircraft.
 const MAV_TYPE_QUADROTOR = 2; // Quadrotor
@@ -37,7 +38,9 @@ const MAV_TYPE_CHARGING_STATION = 31; // Charging station
 const MAV_TYPE_FLARM = 32; // Onboard FLARM collision avoidance system
 const MAV_TYPE_ENUM_END = 33; //
 
-const modeMappingApm = {
+type ModeMap = Record<number, string>;
+
+const modeMappingApm: ModeMap = {
 	0: 'MANUAL',
 	1: 'CIRCLE',
 	2: 'STABILIZE',
@@ -63,7 +66,7 @@ const modeMappingApm = {
 	23: 'QACRO',
 	24: 'THERMAL'
 };
-const modeMappingAcm = {
+const modeMappingAcm: ModeMap = {
 	0: 'STABILIZE',
 	1: 'ACRO',
 	2: 'ALT_HOLD',
@@ -89,7 +92,7 @@ const modeMappingAcm = {
 	25: 'SYSTEMID',
 	26: 'AUTOROTATE'
 };
-const modeMappingRover = {
+const modeMappingRover: ModeMap = {
 	0: 'MANUAL',
 	1: 'ACRO',
 	3: 'STEERING',
@@ -105,7 +108,7 @@ const modeMappingRover = {
 	15: 'GUIDED',
 	16: 'INITIALISING'
 };
-const modeMappingTracker = {
+const modeMappingTracker: ModeMap = {
 	0: 'MANUAL',
 	1: 'STOP',
 	2: 'SCAN',
@@ -113,7 +116,7 @@ const modeMappingTracker = {
 	10: 'AUTO',
 	16: 'INITIALISING'
 };
-const modeMappingSub = {
+const modeMappingSub: ModeMap = {
 	0: 'STABILIZE',
 	1: 'ACRO',
 	2: 'ALT_HOLD',
@@ -126,7 +129,7 @@ const modeMappingSub = {
 	20: 'MOTOR_DETECT'
 };
 
-const multipliers = {
+const multipliers: Record<string, number> = {
 	'-': 0, // no multiplier e.g. a string
 	'?': 1, // multipliers which haven't been worked out yet....
 	// <leave a gap here, just in case....>
@@ -145,7 +148,7 @@ const multipliers = {
 	'/': 3600 // (ampere*second => ampere*hour)
 };
 
-const multipliersTable = {
+const multipliersTable: Record<string, string> = {
 	0.000001: 'n',
 	1000: 'M',
 	0.001: 'm'
@@ -154,7 +157,7 @@ const multipliersTable = {
 const HEAD1 = 163;
 const HEAD2 = 149;
 
-const units = {
+const units: Record<string, string> = {
 	'-': '', // no units e.g. Pi, or a string
 	'?': 'UNKNOWN', // Units which haven't been worked out yet....
 	A: 'A', // Ampere
@@ -190,8 +193,8 @@ const units = {
 	'#': 'instance' // instance number for message
 };
 
-function getModeMap(mavType) {
-	let map;
+function getModeMap(mavType: number): ModeMap | null {
+	let map: ModeMap | undefined;
 	if (
 		[
 			MAV_TYPE_QUADROTOR,
@@ -223,17 +226,67 @@ function getModeMap(mavType) {
 }
 
 // Converts from degrees to radians.
-Math.radians = function (degrees) {
+(Math as any).radians = function (degrees: number): number {
 	return (degrees * Math.PI) / 180;
 };
 
 // Converts from radians to degrees.
-Math.degrees = function (radians) {
+(Math as any).degrees = function (radians: number): number {
 	return (radians * 180) / Math.PI;
 };
 
+// A typed array produced by get_type_array
+type TypedArrayLike =
+	| any[]
+	| Int8Array
+	| Uint8Array
+	| Int16Array
+	| Uint16Array
+	| Int32Array
+	| Uint32Array
+	| Float32Array
+	| Float64Array;
+
+interface FmtEntry {
+	Type: string | number;
+	length: string | number;
+	Name: string;
+	Format: string;
+	Columns: string[];
+	FormatOffset?: number[];
+	Size?: number;
+	Total_Length?: number;
+	OffsetArray?: number[];
+	InstancesOffsetArray?: Record<string | number, number[]>;
+	units?: string[];
+	multipliers?: number[];
+}
+
+interface MessageTypeInfo {
+	expressions: string[];
+	units?: string[];
+	multipliers?: number[];
+	complexFields?: Record<
+		string,
+		{ name: string; units: string; multiplier: number }
+	>;
+	instances?: Record<string | number, string>;
+}
+
+declare const self: DedicatedWorkerGlobalScope & typeof globalThis;
+
 class DataflashParser {
-	constructor(send_postMessage) {
+	buffer: ArrayBuffer | null;
+	data: DataView | null;
+	FMT: FmtEntry[];
+	offset: number;
+	messages: Record<string, any>;
+	sent: boolean;
+	messageTypes: Record<string, MessageTypeInfo>;
+	send_postMessage: boolean;
+	files?: Record<string, Uint8Array>;
+
+	constructor(send_postMessage?: boolean) {
 		this.buffer = null;
 		this.data = null;
 		this.FMT = [];
@@ -252,7 +305,7 @@ class DataflashParser {
 	}
 
 	// Return array for given data type with length len
-	get_type_array(type, len) {
+	get_type_array(type: string, len: number): TypedArrayLike | undefined {
 		// In the future we can could use the correct types where possible
 		// Would have to check multipliers
 		switch (type) {
@@ -262,28 +315,38 @@ class DataflashParser {
 			case 'Z': // char[64]
 				return new Array(len);
 			case 'b': // Int8
+				return new Int8Array(len);
 			case 'B': // Uint8
 			case 'M': // Uint8 (flight mode)
+				return new Uint8Array(len);
 			case 'h': // Int16
+      case 'c': // Int16 / 100
+				return new Int16Array(len);
 			case 'H': // Uint16
+      case 'C': // Uint16 / 100
+				return new Uint16Array(len);
 			case 'i': // Int32
 			case 'L': // Int32
+      case 'e': // Int32 / 100
+				return new Int32Array(len);
 			case 'I': // Uint32
+      case 'E': // Uint32 / 100
+				return new Uint32Array(len);
 			case 'f': // Float32
+				return new Float32Array(len);
 			case 'd': // Float64
 			case 'Q': // Uint64
 			case 'q': // Int64
-			case 'c': // Int16 / 100
-			case 'C': // Uint16 / 100
-			case 'E': // Uint32 / 100
-			case 'e': // Int32 / 100
 				return new Float64Array(len);
 		}
 	}
 
 	// Parse given data type from log
-	parse_type(type) {
-		let ret;
+	parse_type(type: string): any {
+		let ret: any;
+		if (!this.data) {
+			return ret;
+		}
 		switch (type) {
 			case 'a': // int16_t[32]
 				ret = [];
@@ -344,41 +407,41 @@ class DataflashParser {
 				// TODO: fix these regex and unsilent linter
 				// eslint-disable-next-line
 				ret = String.fromCharCode
-					.apply(null, new Uint8Array(this.buffer, this.offset, 4))
+					.apply(null, Array.from(new Uint8Array(this.buffer as ArrayBuffer, this.offset, 4)))
 					.replace(/\x00+$/g, '');
 				this.offset += 4;
 				break;
 			case 'N':
 				// eslint-disable-next-line
 				ret = String.fromCharCode
-					.apply(null, new Uint8Array(this.buffer, this.offset, 16))
+					.apply(null, Array.from(new Uint8Array(this.buffer as ArrayBuffer, this.offset, 16)))
 					.replace(/\x00+$/g, '');
 				this.offset += 16;
 				break;
 			case 'Z':
 				// eslint-disable-next-line
 				ret = String.fromCharCode
-					.apply(null, new Uint8Array(this.buffer, this.offset, 64))
+					.apply(null, Array.from(new Uint8Array(this.buffer as ArrayBuffer, this.offset, 64)))
 					.replace(/\x00+$/g, '');
 				this.offset += 64;
 				break;
 			case 'c':
-				// this.this.data.setInt16(offset,true);
+				// DataFlash 'c' encodes int16*100.
 				ret = this.data.getInt16(this.offset, true);
 				this.offset += 2;
 				break;
 			case 'C':
-				// this.data.setUint16(offset,true);
+				// DataFlash 'C' encodes uint16*100.
 				ret = this.data.getUint16(this.offset, true);
 				this.offset += 2;
 				break;
 			case 'E':
-				// this.data.setUint32(offset,true);
+				// DataFlash 'E' encodes uint32*100.
 				ret = this.data.getUint32(this.offset, true);
 				this.offset += 4;
 				break;
 			case 'e':
-				// this.data.setInt32(offset,true);
+				// DataFlash 'e' encodes int32*100.
 				ret = this.data.getInt32(this.offset, true);
 				this.offset += 4;
 				break;
@@ -397,7 +460,7 @@ class DataflashParser {
 	}
 
 	// Get size of given type
-	get_size_of(type) {
+	get_size_of(type: string): number | undefined {
 		switch (type) {
 			case 'b': // Int8
 			case 'B': // Uint8
@@ -428,15 +491,15 @@ class DataflashParser {
 		}
 	}
 
-	FORMAT_TO_STRUCT(obj) {
-		const dict = {};
+	FORMAT_TO_STRUCT(obj: FmtEntry): Record<string, any> {
+		const dict: Record<string, any> = {};
 		for (let i = 0; i < obj.Format.length; i++) {
 			dict[obj.Columns[i]] = this.parse_type(obj.Format.charAt(i));
 		}
 		return dict;
 	}
 
-	getFMT(element) {
+	getFMT(element: string): FmtEntry | undefined {
 		for (let i = 0; i < this.FMT.length; i++) {
 			if (this.FMT[i] != null) {
 				// eslint-disable-next-line
@@ -448,17 +511,17 @@ class DataflashParser {
 	}
 
 	// Next three functions are used for transfering data on postmessage, instead of cloning
-	isTypedArray(arr) {
+	isTypedArray(arr: any): boolean {
 		return ArrayBuffer.isView(arr) && !(arr instanceof DataView);
 	}
 
-	getType(arr) {
+	getType(arr: any): string | false {
 		return this.isTypedArray(arr) && arr.constructor.name;
 	}
 
-	postData(data) {
+	postData(data: any): void {
 		data.dataType = {};
-		const transferables = [];
+		const transferables: ArrayBuffer[] = [];
 		for (const field of Object.keys(data.messageList)) {
 			const arrayType = this.getType(data.messageList[field]);
 			if (arrayType) {
@@ -467,11 +530,11 @@ class DataflashParser {
 			// Apparently it is magically decoded on the other end, no need for metadata
 			// data['dataType'][field] = arrayType
 		}
-		self.postMessage(data, transferables);
+		self.postMessage(data, transferables as any);
 	}
 
 	// Log name, optional instance name, optional field
-	get_instance(name, instance, field) {
+	get_instance(name: string, instance: string | number | null, field?: string): any {
 		// Read and return array for given log field, this will not be stored locally
 		const msg_FMT = this.getFMT(name);
 		if (msg_FMT == null) {
@@ -481,22 +544,22 @@ class DataflashParser {
 
 		if (
 			instance !== null &&
-			!('InstancesOffsetArray' in msg_FMT && instance in msg_FMT.InstancesOffsetArray)
+			!('InstancesOffsetArray' in msg_FMT && instance in (msg_FMT.InstancesOffsetArray as any))
 		) {
 			// instance given but no instances or don't have the given instance
 			return;
 		}
 
-		const parse = (offsets) => {
+		const parse = (offsets: number[]): any => {
 			const len = offsets.length;
 			if (len == 0) {
 				// no data
 				return;
 			}
 
-			const parse_all = () => {
+			const parse_all = (): Record<string, any> => {
 				// Return object with all fields
-				const ret = {};
+				const ret: Record<string, any> = {};
 
 				const num_fields = msg_FMT.Format.length;
 				for (let i = 0; i < num_fields; i++) {
@@ -517,20 +580,20 @@ class DataflashParser {
 				return ret;
 			};
 
-			const parse_field = () => {
+			const parse_field = (): any => {
 				// Just return array for given field
-				const field_index = msg_FMT.Columns.indexOf(field);
+				const field_index = msg_FMT.Columns.indexOf(field as string);
 				if (field_index == -1) {
 					// no such field
 					return;
 				}
 
 				// Get offset of field within msg and type
-				const offset = msg_FMT.FormatOffset[field_index];
+				const offset = (msg_FMT.FormatOffset as number[])[field_index];
 				const type = msg_FMT.Format.charAt(field_index);
 
 				// Read data
-				const ret = this.get_type_array(type, len);
+				const ret = this.get_type_array(type, len) as any;
 				for (let i = 0; i < len; i++) {
 					this.offset = offsets[i] + offset;
 					ret[i] = this.parse_type(type);
@@ -546,42 +609,44 @@ class DataflashParser {
 		};
 
 		if (instance != null) {
-			return parse(msg_FMT.InstancesOffsetArray[instance]);
+			return parse((msg_FMT.InstancesOffsetArray as any)[instance]);
 		}
-		return parse(msg_FMT.OffsetArray);
+		return parse(msg_FMT.OffsetArray as number[]);
 	}
 
-	get(name, field) {
+	get(name: string, field?: string): any {
 		return this.get_instance(name, null, field);
 	}
 
-	parseAtOffset(name) {
+	parseAtOffset(name: string): void {
 		const msg_FMT = this.getFMT(name);
 		if (msg_FMT == null) {
 			return;
 		}
 
-		const parse = (msg, offsets) => {
+		const getAppliedMultiplier = (multiplier?: number): number => {
+			// '-' is represented as 0 in the lookup table and means "no extra multiplier".
+			if (multiplier == null || multiplier === 0 || Number.isNaN(multiplier)) {
+				return 1;
+			}
+			return multiplier;
+		};
+
+		const parse = (msg: FmtEntry, offsets: number[]): Record<string, any> => {
 			const len = offsets.length;
 			if (len == 0) {
 				return {};
 			}
 			const Format = msg.Format;
 			const num_fields = Format.length;
-			let time_index;
+			//let time_index: number | undefined;
 
 			// Pre allocate arrays
-			const parsed = {};
+			const parsed: Record<string, any> = {};
 			for (let i = 0; i < num_fields; i++) {
-				const name = msg.Columns[i];
-				if (name == 'TimeUS') {
-					// Override TimeUS to time_boot_s allowing conversion to milliseconds
-					time_index = i;
-					parsed.time_boot_s = new Float64Array(len);
-				} else {
-					// Use correct array type for this format
-					parsed[name] = this.get_type_array(Format.charAt(i), len);
-				}
+				const colName = msg.Columns[i];
+        parsed[colName] = this.get_type_array(Format.charAt(i), len);
+
 			}
 
 			// For each log message
@@ -590,16 +655,11 @@ class DataflashParser {
 
 				// For each field
 				for (let j = 0; j < num_fields; j++) {
-					if (j == time_index) {
-						// us to s
-						parsed.time_boot_s[i] = msg_FMT.multipliers[j] * this.parse_type(Format.charAt(j));
-					} else {
-						const name = msg.Columns[j];
-						parsed[name][i] = this.parse_type(Format.charAt(j));
-						if (msg_FMT.multipliers[j]) {
-							parsed[name][i] = parsed[name][i] * msg_FMT.multipliers[j];
-						}
-					}
+					const appliedMultiplier = getAppliedMultiplier(msg_FMT.multipliers?.[j]);
+
+          const colName = msg.Columns[j];
+          parsed[colName][i] = this.parse_type(Format.charAt(j));// * appliedMultiplier;
+
 				}
 
 				if (this.send_postMessage && i % 1000 === 0) {
@@ -616,11 +676,16 @@ class DataflashParser {
 
 		if (has_instance) {
 			// Parse instances
-			for (const [index, offsets] of Object.entries(msg_FMT.InstancesOffsetArray)) {
+			for (const [index, offsets] of Object.entries(msg_FMT.InstancesOffsetArray as Record<string, number[]>)) {
 				const inst_name = name + '[' + index + ']';
 				this.messages[inst_name] = parse(msg_FMT, offsets);
 				if (this.send_postMessage) {
-					this.postData({ messageType: inst_name, messageList: this.messages[inst_name] });
+					this.postData({
+						messageType: inst_name,
+						format: msg_FMT.Format,
+            multipliers: msg_FMT.multipliers,
+						messageList: this.messages[inst_name]
+					});
 				}
 			}
 			if (this.send_postMessage) {
@@ -631,7 +696,7 @@ class DataflashParser {
 		}
 
 		// Parse as single msg
-		this.messages[name] = parse(msg_FMT, msg_FMT.OffsetArray);
+		this.messages[name] = parse(msg_FMT, msg_FMT.OffsetArray as number[]);
 
 		// Add mode string to mode message
 		if (msg_FMT.Name === 'MODE') {
@@ -646,13 +711,18 @@ class DataflashParser {
 			// let's not send FMT as it is not useful for users...
 			// (and because we need the data and we can't access it after postData with transferables)
 			if (name.indexOf('FMT') === -1) {
-				this.postData({ messageType: name, messageList: this.messages[name] });
+        this.postData({
+						messageType: name,
+						format: msg_FMT.Format,
+            multipliers: msg_FMT.multipliers,
+						messageList: this.messages[name]
+					})
 			}
 			self.postMessage({ percentage: 100 });
 		}
 	}
 
-	checkNumberOfInstances(msg) {
+	checkNumberOfInstances(msg: FmtEntry): (string | number)[] | undefined {
 		// Parse whole log checking only instance field
 		// Populates array offsets of instances, this allows them to be loaded individually
 
@@ -669,20 +739,20 @@ class DataflashParser {
 
 		// Find the offset of the instance field
 		// this means we can jump to it without parsing the whole msg
-		const instance_offset = msg.FormatOffset[instance_index];
+		const instance_offset = (msg.FormatOffset as number[])[instance_index];
 		const instance_type = msg.Format.charAt(instance_index);
 
-		const availableInstances = [];
+		const availableInstances: (string | number)[] = [];
 		msg.InstancesOffsetArray = {};
-		const len = msg.OffsetArray.length;
+		const len = (msg.OffsetArray as number[]).length;
 		for (let i = 0; i < len; i++) {
-			this.offset = msg.OffsetArray[i] + instance_offset;
+			this.offset = (msg.OffsetArray as number[])[i] + instance_offset;
 			const instance = this.parse_type(instance_type);
 			if (msg.InstancesOffsetArray[instance] == null) {
 				msg.InstancesOffsetArray[instance] = [];
 				availableInstances.push(instance);
 			}
-			msg.InstancesOffsetArray[instance].push(msg.OffsetArray[i]);
+			msg.InstancesOffsetArray[instance].push((msg.OffsetArray as number[])[i]);
 		}
 
 		// Don't need array at base level anymore
@@ -691,9 +761,12 @@ class DataflashParser {
 		return availableInstances;
 	}
 
-	DfReader() {
+	DfReader(): void {
+		if (!this.buffer || !this.data) {
+			return;
+		}
 		let lastOffset = 0;
-		let msg_OffsetArray = [];
+		let msg_OffsetArray: number[][] = [];
 		while (this.offset < this.buffer.byteLength - 3) {
 			if (
 				this.data.getUint8(this.offset) !== HEAD1 ||
@@ -720,10 +793,10 @@ class DataflashParser {
 						const value = this.FORMAT_TO_STRUCT(this.FMT[attribute]);
 						// Pre-calculate size of message and offsets
 						let Size = 0;
-						let FormatOffset = new Array(value.Format.length);
+						let FormatOffset: number[] = new Array(value.Format.length);
 						for (let i = 0; i < value.Format.length; i++) {
 							FormatOffset[i] = Size;
-							Size += this.get_size_of(value.Format.charAt(i));
+							Size += this.get_size_of(value.Format.charAt(i)) as number;
 						}
 						this.FMT[value.Type] = {
 							Type: value.Type,
@@ -736,7 +809,7 @@ class DataflashParser {
 						};
 					} else {
 						// Don't need to parse, advance by msg length
-						this.offset += this.FMT[attribute].Size;
+						this.offset += this.FMT[attribute].Size as number;
 					}
 				} catch (e) {
 					// console.log('reached log end?')
@@ -764,13 +837,13 @@ class DataflashParser {
 				this.FMT[i].OffsetArray = msg_OffsetArray[i];
 
 				// Check that there is room for the final message
-				const msg_end =
-					this.FMT[i].OffsetArray[this.FMT[i].OffsetArray.length - 1] + this.FMT[i].Size;
+				const offsetArray = this.FMT[i].OffsetArray as number[];
+				const msg_end = offsetArray[offsetArray.length - 1] + (this.FMT[i].Size as number);
 				if (msg_end > this.buffer.byteLength) {
 					// Last message will overflow, remove
-					this.FMT[i].OffsetArray.pop();
+					offsetArray.pop();
 				}
-				this.FMT[i].Total_Length = this.FMT[i].OffsetArray.length;
+				this.FMT[i].Total_Length = offsetArray.length;
 			}
 		}
 
@@ -781,44 +854,47 @@ class DataflashParser {
 		}
 	}
 
-	getModeString(cmode) {
-		let mavtype;
+	getModeString(cmode: number): string | undefined {
+		let mavtype: number | undefined;
 		const msgs = this.messages.MSG;
 		if (msgs) {
 			for (const i in msgs.Message) {
 				if (msgs.Message.hasOwnProperty(i)) {
 					if (msgs.Message[i].toLowerCase().includes('arduplane')) {
 						mavtype = MAV_TYPE_FIXED_WING;
-						return getModeMap(mavtype)[cmode];
+						return getModeMap(mavtype)?.[cmode];
 					} else if (msgs.Message[i].toLowerCase().includes('arducopter')) {
 						mavtype = MAV_TYPE_QUADROTOR;
-						return getModeMap(mavtype)[cmode];
+						return getModeMap(mavtype)?.[cmode];
 					} else if (msgs.Message[i].toLowerCase().includes('ardusub')) {
 						mavtype = MAV_TYPE_SUBMARINE;
-						return getModeMap(mavtype)[cmode];
+						return getModeMap(mavtype)?.[cmode];
 					} else if (msgs.Message[i].toLowerCase().includes('rover')) {
 						mavtype = MAV_TYPE_GROUND_ROVER;
-						return getModeMap(mavtype)[cmode];
+						return getModeMap(mavtype)?.[cmode];
 					} else if (msgs.Message[i].toLowerCase().includes('tracker')) {
 						mavtype = MAV_TYPE_ANTENNA_TRACKER;
-						return getModeMap(mavtype)[cmode];
+						return getModeMap(mavtype)?.[cmode];
 					}
 				}
 			}
 		}
 		console.log('defaulting to fixed wing');
-		return getModeMap(MAV_TYPE_FIXED_WING)[cmode];
+		return getModeMap(MAV_TYPE_FIXED_WING)?.[cmode];
 	}
 
-	concatTypedArrays(a, b) {
+	concatTypedArrays<T extends { constructor: any; length: number; set: (arr: any, offset?: number) => void }>(
+		a: T,
+		b: T
+	): T {
 		// a, b TypedArray of same type
-		const c = new a.constructor(a.length + b.length);
+		const c = new (a.constructor as any)(a.length + b.length);
 		c.set(a, 0);
 		c.set(b, a.length);
 		return c;
 	}
 
-	createUint8ArrayFromString(str) {
+	createUint8ArrayFromString(str: string): Uint8Array {
 		const array = new Uint8Array(str.length);
 		for (let i = 0, strLen = str.length; i < strLen; i++) {
 			array[i] = str.charCodeAt(i);
@@ -826,7 +902,7 @@ class DataflashParser {
 		return array;
 	}
 
-	processFiles() {
+	processFiles(): void {
 		this.files = {};
 		if (this.messages.FILE === undefined) {
 			return;
@@ -850,28 +926,28 @@ class DataflashParser {
 		}
 	}
 
-	populateUnits() {
+	populateUnits(): void {
 		const FMTU = this.get('FMTU');
 		for (const index in FMTU.FmtType) {
 			const type = FMTU.FmtType[index];
 			this.FMT[type].units = [];
 			for (const unit of FMTU.UnitIds[index]) {
-				this.FMT[type].units.push(units[unit]);
+				(this.FMT[type].units as string[]).push(units[unit]);
 			}
 			this.FMT[type].multipliers = [];
 			for (const mult of FMTU.MultIds[index]) {
-				this.FMT[type].multipliers.push(multipliers[mult]);
+				(this.FMT[type].multipliers as number[]).push(multipliers[mult]);
 			}
 		}
 	}
 
-	extractStartTime() {
+	extractStartTime(): Date | undefined {
 		if (!('GPS' in this.messageTypes)) {
 			// No GPS time, can't get timestamp
 			return;
 		}
 		// Find the fist log message with timestamp
-		let first_time_offset;
+		let first_time_offset: number | undefined;
 		for (const msg of this.FMT) {
 			if (msg == null) {
 				// Invalid message type
@@ -886,39 +962,44 @@ class DataflashParser {
 			}
 
 			// Offset of timestamp within message
-			const TimeUS_offset = msg.FormatOffset[time_index];
+			const TimeUS_offset = (msg.FormatOffset as number[])[time_index];
 
 			// Helper to record first offset of time stamp
-			function update_first_offset(new_msg_offset) {
+			const update_first_offset = (new_msg_offset: number): void => {
 				const time_offset = new_msg_offset + TimeUS_offset;
 				if (first_time_offset == null || time_offset < first_time_offset) {
 					first_time_offset = time_offset;
 				}
-			}
+			};
 
 			// Offset of message, only check first, assume time never goes backwards
 			if ('InstancesOffsetArray' in msg) {
 				// Multiple instances
-				for (const inst of Object.values(msg.InstancesOffsetArray)) {
+				for (const inst of Object.values(msg.InstancesOffsetArray as Record<string, number[]>)) {
 					if (inst.length > 0) {
 						update_first_offset(inst[0]);
 					}
 				}
 			} else {
 				// Single instance
-				if (msg.OffsetArray.length > 0) {
-					update_first_offset(msg.OffsetArray[0]);
+				if ((msg.OffsetArray as number[]).length > 0) {
+					update_first_offset((msg.OffsetArray as number[])[0]);
 				}
 			}
 		}
-		let start_time_us;
+		let start_time_us: number | undefined;
 		if (first_time_offset != null) {
 			this.offset = first_time_offset;
 			start_time_us = this.parse_type('Q');
 		}
 
 		// Helper to get the first week and ms time from GPS message
-		function get_gps_time(time, status, weeks, ms) {
+		const get_gps_time = (
+			time: any,
+			status: any,
+			weeks: any,
+			ms: any
+		): { TimeUS: number; weeks: number; ms: number } | undefined => {
 			// Must have 3D fix
 			const GPS_OK_FIX_3D = 3;
 
@@ -936,22 +1017,24 @@ class DataflashParser {
 					};
 				}
 			}
-		}
+		};
 
 		// Pick the instance with the first valid time
-		let time;
-		function update_first_time(new_time) {
+		let time: { TimeUS: number; weeks: number; ms: number } | undefined;
+		const update_first_time = (
+			new_time: { TimeUS: number; weeks: number; ms: number } | undefined
+		): void => {
 			if (new_time == null) {
 				return;
 			}
 			if (time == null || new_time.TimeUS < time.TimeUS) {
 				time = new_time;
 			}
-		}
+		};
 
 		if ('instances' in this.messageTypes.GPS) {
 			// Newer instance message
-			for (const inst of Object.keys(this.messageTypes.GPS.instances)) {
+			for (const inst of Object.keys((this.messageTypes.GPS as any).instances)) {
 				// Check each instance
 				update_first_time(
 					get_gps_time(
@@ -979,12 +1062,14 @@ class DataflashParser {
 			return;
 		}
 
+		const validTime = time as { TimeUS: number; weeks: number; ms: number };
+
 		// Calculate GPS time in seconds
 		const ms_per_week = 7 * 24 * 60 * 60 * 1000;
-		const GPS_ms = time.weeks * ms_per_week + time.ms;
+		const GPS_ms = validTime.weeks * ms_per_week + validTime.ms;
 
 		// Log was started before GPS msg
-		const log_start_offset_ms = (time.TimeUS - start_time_us) * 0.001;
+		const log_start_offset_ms = (validTime.TimeUS - (start_time_us as number)) * 0.001;
 
 		// Convert to unix time
 		const unix_gps_offset_ms = 315964800 * 1000;
@@ -998,11 +1083,11 @@ class DataflashParser {
 		return new Date(d.getTime() - leap_seconds * 1000);
 	}
 
-	leapSecondsGPS(year, month) {
+	leapSecondsGPS(year: number, month: number): number {
 		return this.leapSecondsTAI(year, month) - 19;
 	}
 
-	leapSecondsTAI(year, month) {
+	leapSecondsTAI(year: number, month: number): number {
 		const yyyymm = year * 100 + month;
 		if (yyyymm >= 201701) return 37;
 		if (yyyymm >= 201507) return 36;
@@ -1016,11 +1101,11 @@ class DataflashParser {
 		return 0;
 	}
 
-	processData(data, msgs) {
+	processData(data: ArrayBuffer, msgs?: string[]): { types: Record<string, MessageTypeInfo>; messages: Record<string, any> } {
 		this.buffer = data;
 		this.data = new DataView(this.buffer);
 		this.DfReader();
-		const messageTypes = {};
+		const messageTypes: Record<string, MessageTypeInfo> = {};
 		try {
 			this.populateUnits();
 		} catch (e) {
@@ -1030,12 +1115,14 @@ class DataflashParser {
 		for (const msg of this.FMT) {
 			if (msg && msg.Total_Length != 0) {
 				const fields = msg.Columns;
-				const complexFields = {};
+				const complexFields: Record<string, { name: string; units: string; multiplier: number }> = {};
 				for (let i = 0; i < fields.length; i++) {
 					complexFields[fields[i]] = {
 						name: fields[i],
-						units: !msg.units ? '?' : (multipliersTable[msg.multipliers[i]] || '') + msg.units[i],
-						multiplier: !msg.units ? 1.0 : msg.multipliers[i]
+						units: !msg.units
+							? '?'
+							: (multipliersTable[(msg.multipliers as number[])[i]] || '') + msg.units[i],
+						multiplier: !msg.units ? 1.0 : (msg.multipliers as number[])[i]
 					};
 				}
 				messageTypes[msg.Name] = {
@@ -1049,7 +1136,7 @@ class DataflashParser {
 					messageTypes[msg.Name].instances = {};
 					for (const instance of availableInstances) {
 						const inst_name = msg.Name + '[' + instance + ']';
-						messageTypes[msg.Name].instances[instance] = inst_name;
+						(messageTypes[msg.Name].instances as Record<string | number, string>)[instance] = inst_name;
 						messageTypes[inst_name] = {
 							expressions: fields,
 							units: msg.units,
@@ -1085,19 +1172,19 @@ class DataflashParser {
 		return { types: this.messageTypes, messages: this.messages };
 	}
 
-	loadType(type) {
+	loadType(type: string): void {
 		this.parseAtOffset(type);
 		console.log('done');
 	}
 
 	// Return array of objects giving stats about the composition of the log, sizes in bytes
-	stats() {
-		let ret = {};
+	stats(): Record<string, { count: number; msg_size: number; size: number }> {
+		let ret: Record<string, { count: number; msg_size: number; size: number }> = {};
 		for (const msg of this.FMT) {
 			if (msg) {
 				// All message have a 3 byte header
-				const msg_size = msg.Size + 3;
-				const count = msg.Total_Length;
+				const msg_size = (msg.Size as number) + 3;
+				const count = msg.Total_Length as number;
 				const size = msg_size * count;
 				ret[msg.Name] = { count, msg_size, size };
 			}
@@ -1105,10 +1192,14 @@ class DataflashParser {
 
 		return ret;
 	}
+
+	// Referenced by the worker message handler below but not defined in the
+	// original source; declared here to preserve the same call signature.
+	trimFile?(time: unknown): void;
 }
 
-self.addEventListener('message', function (event) {
-	let parser;
+self.addEventListener('message', function (event: MessageEvent) {
+	let parser: DataflashParser | undefined;
 	if (event.data === null) {
 		console.log('got bad file message!');
 	} else if (event.data.action === 'parse') {
@@ -1116,9 +1207,9 @@ self.addEventListener('message', function (event) {
 
 		parser.processData(event.data.file, event.data.msgs);
 	} else if (event.data.action === 'loadType') {
-		parser.loadType(event.data.type.split('[')[0]);
+		parser?.loadType(event.data.type.split('[')[0]);
 	} else if (event.data.action === 'trimFile') {
-		parser.trimFile(event.data.time);
+		parser?.trimFile?.(event.data.time);
 	}
 });
 
