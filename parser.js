@@ -396,6 +396,30 @@ class DataflashParser {
 		return ret;
 	}
 
+	get_type_multiplier(type, multiplier) {
+		if (multiplier !== undefined && multiplier !== null) {
+			return multiplier;
+		}
+
+		switch (type) {
+			case 'c':
+			case 'C':
+			case 'E':
+			case 'e':
+				return 0.01;
+			case 'L':
+				return 1e-7;
+			default:
+				return 1;
+		}
+	}
+
+	apply_type_multiplier(type, value, multiplier) {
+		return typeof value === 'number'
+			? value * this.get_type_multiplier(type, multiplier)
+			: value;
+	}
+
 	// Get size of given type
 	get_size_of(type) {
 		switch (type) {
@@ -510,7 +534,13 @@ class DataflashParser {
 
 					// For each field
 					for (let j = 0; j < num_fields; j++) {
-						ret[msg_FMT.Columns[j]][i] = this.parse_type(msg_FMT.Format.charAt(j));
+						const type = msg_FMT.Format.charAt(j);
+						ret[msg_FMT.Columns[j]][i] =
+							this.apply_type_multiplier(
+								type,
+								this.parse_type(type),
+								msg_FMT.multipliers?.[j]
+							);
 					}
 				}
 
@@ -533,7 +563,11 @@ class DataflashParser {
 				const ret = this.get_type_array(type, len);
 				for (let i = 0; i < len; i++) {
 					this.offset = offsets[i] + offset;
-					ret[i] = this.parse_type(type);
+					ret[i] = this.apply_type_multiplier(
+						type,
+						this.parse_type(type),
+						msg_FMT.multipliers?.[field_index]
+					);
 				}
 
 				return ret;
@@ -592,13 +626,18 @@ class DataflashParser {
 				for (let j = 0; j < num_fields; j++) {
 					if (j == time_index) {
 						// us to s
-						parsed.time_boot_s[i] = msg_FMT.multipliers[j] * this.parse_type(Format.charAt(j));
+						const type = Format.charAt(j);
+						parsed.time_boot_s[i] =
+							this.parse_type(type) *
+							(msg_FMT.multipliers?.[j] ?? 1e-6);
 					} else {
 						const name = msg.Columns[j];
-						parsed[name][i] = this.parse_type(Format.charAt(j));
-						if (msg_FMT.multipliers[j]) {
-							parsed[name][i] = parsed[name][i] * msg_FMT.multipliers[j];
-						}
+						const type = Format.charAt(j);
+						parsed[name][i] = this.apply_type_multiplier(
+							type,
+							this.parse_type(type),
+							msg_FMT.multipliers?.[j]
+						);
 					}
 				}
 
@@ -852,14 +891,31 @@ class DataflashParser {
 
 	populateUnits() {
 		const FMTU = this.get('FMTU');
+		if (FMTU == null || FMTU.FmtType == null) {
+			return;
+		}
+
 		for (const index in FMTU.FmtType) {
 			const type = FMTU.FmtType[index];
-			this.FMT[type].units = [];
-			for (const unit of FMTU.UnitIds[index]) {
-				this.FMT[type].units.push(units[unit]);
+			if (this.FMT[type] == null) {
+				continue;
 			}
+
+			this.FMT[type].units = [];
+			const unitIds = FMTU.UnitIds?.[index];
+			if (unitIds != null && typeof unitIds[Symbol.iterator] === 'function') {
+				for (const unit of unitIds) {
+					this.FMT[type].units.push(units[unit]);
+				}
+			}
+
 			this.FMT[type].multipliers = [];
-			for (const mult of FMTU.MultIds[index]) {
+			const multiplierIds = FMTU.MultIds?.[index];
+			if (multiplierIds == null || typeof multiplierIds[Symbol.iterator] !== 'function') {
+				continue;
+			}
+
+			for (const mult of multiplierIds) {
 				this.FMT[type].multipliers.push(multipliers[mult]);
 			}
 		}
@@ -870,6 +926,22 @@ class DataflashParser {
 			// No GPS time, can't get timestamp
 			return;
 		}
+
+		const get_raw_field = (name, instance, field) => {
+			const msg = this.getFMT(name);
+			const field_index = msg.Columns.indexOf(field);
+			const offsets =
+				instance == null
+					? msg.OffsetArray
+					: msg.InstancesOffsetArray[instance];
+			const field_offset = msg.FormatOffset[field_index];
+			const type = msg.Format.charAt(field_index);
+
+			return offsets.map((offset) => {
+				this.offset = offset + field_offset;
+				return this.parse_type(type);
+			});
+		};
 		// Find the fist log message with timestamp
 		let first_time_offset;
 		for (const msg of this.FMT) {
@@ -955,10 +1027,10 @@ class DataflashParser {
 				// Check each instance
 				update_first_time(
 					get_gps_time(
-						this.get_instance('GPS', inst, 'TimeUS'),
-						this.get_instance('GPS', inst, 'Status'),
-						this.get_instance('GPS', inst, 'GWk'),
-						this.get_instance('GPS', inst, 'GMS')
+						get_raw_field('GPS', inst, 'TimeUS'),
+						get_raw_field('GPS', inst, 'Status'),
+						get_raw_field('GPS', inst, 'GWk'),
+						get_raw_field('GPS', inst, 'GMS')
 					)
 				);
 			}
@@ -966,10 +1038,10 @@ class DataflashParser {
 			// Old log before instances, just look at GPS, not GPS2
 			update_first_time(
 				get_gps_time(
-					this.get('GPS', 'TimeUS'),
-					this.get('GPS', 'Status'),
-					this.get('GPS', 'GWk'),
-					this.get('GPS', 'GMS')
+					get_raw_field('GPS', null, 'TimeUS'),
+					get_raw_field('GPS', null, 'Status'),
+					get_raw_field('GPS', null, 'GWk'),
+					get_raw_field('GPS', null, 'GMS')
 				)
 			);
 		}
@@ -1031,17 +1103,22 @@ class DataflashParser {
 			if (msg && msg.Total_Length != 0) {
 				const fields = msg.Columns;
 				const complexFields = {};
+				const messageMultipliers = fields.map((_, i) =>
+					this.get_type_multiplier(msg.Format.charAt(i), msg.multipliers?.[i])
+				);
 				for (let i = 0; i < fields.length; i++) {
 					complexFields[fields[i]] = {
 						name: fields[i],
-						units: !msg.units ? '?' : (multipliersTable[msg.multipliers[i]] || '') + msg.units[i],
-						multiplier: !msg.units ? 1.0 : msg.multipliers[i]
+						units: !msg.units
+							? '?'
+							: (multipliersTable[messageMultipliers[i]] || '') + msg.units[i],
+						multiplier: messageMultipliers[i]
 					};
 				}
 				messageTypes[msg.Name] = {
 					expressions: fields,
 					units: msg.units,
-					multipliers: msg.multipliers,
+					multipliers: messageMultipliers,
 					complexFields: complexFields
 				};
 				const availableInstances = this.checkNumberOfInstances(msg);
@@ -1053,7 +1130,7 @@ class DataflashParser {
 						messageTypes[inst_name] = {
 							expressions: fields,
 							units: msg.units,
-							multipliers: msg.multipliers,
+							multipliers: messageMultipliers,
 							complexFields: complexFields
 						};
 					}
