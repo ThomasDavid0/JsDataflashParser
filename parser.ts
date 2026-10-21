@@ -266,14 +266,11 @@ interface MessageTypeInfo {
 	expressions: string[];
 	units?: string[];
 	multipliers?: number[];
-	complexFields?: Record<
-		string,
-		{ name: string; units: string; multiplier: number }
-	>;
+	complexFields?: Record<string, { name: string; units: string; multiplier: number }>;
 	instances?: Record<string | number, string>;
 }
 
-declare const self: DedicatedWorkerGlobalScope & typeof globalThis;
+declare const self: Worker & typeof globalThis;
 
 class DataflashParser {
 	buffer: ArrayBuffer | null;
@@ -320,17 +317,17 @@ class DataflashParser {
 			case 'M': // Uint8 (flight mode)
 				return new Uint8Array(len);
 			case 'h': // Int16
-      case 'c': // Int16 / 100
+			case 'c': // Int16 / 100
 				return new Int16Array(len);
 			case 'H': // Uint16
-      case 'C': // Uint16 / 100
+			case 'C': // Uint16 / 100
 				return new Uint16Array(len);
 			case 'i': // Int32
 			case 'L': // Int32
-      case 'e': // Int32 / 100
+			case 'e': // Int32 / 100
 				return new Int32Array(len);
 			case 'I': // Uint32
-      case 'E': // Uint32 / 100
+			case 'E': // Uint32 / 100
 				return new Uint32Array(len);
 			case 'f': // Float32
 				return new Float32Array(len);
@@ -645,8 +642,7 @@ class DataflashParser {
 			const parsed: Record<string, any> = {};
 			for (let i = 0; i < num_fields; i++) {
 				const colName = msg.Columns[i];
-        parsed[colName] = this.get_type_array(Format.charAt(i), len);
-
+				parsed[colName] = this.get_type_array(Format.charAt(i), len);
 			}
 
 			// For each log message
@@ -657,9 +653,8 @@ class DataflashParser {
 				for (let j = 0; j < num_fields; j++) {
 					const appliedMultiplier = getAppliedMultiplier(msg_FMT.multipliers?.[j]);
 
-          const colName = msg.Columns[j];
-          parsed[colName][i] = this.parse_type(Format.charAt(j));// * appliedMultiplier;
-
+					const colName = msg.Columns[j];
+					parsed[colName][i] = this.parse_type(Format.charAt(j)); // * appliedMultiplier;
 				}
 
 				if (this.send_postMessage && i % 1000 === 0) {
@@ -676,14 +671,16 @@ class DataflashParser {
 
 		if (has_instance) {
 			// Parse instances
-			for (const [index, offsets] of Object.entries(msg_FMT.InstancesOffsetArray as Record<string, number[]>)) {
+			for (const [index, offsets] of Object.entries(
+				msg_FMT.InstancesOffsetArray as Record<string, number[]>
+			)) {
 				const inst_name = name + '[' + index + ']';
 				this.messages[inst_name] = parse(msg_FMT, offsets);
 				if (this.send_postMessage) {
 					this.postData({
 						messageType: inst_name,
 						format: msg_FMT.Format,
-            multipliers: msg_FMT.multipliers,
+						multipliers: msg_FMT.multipliers,
 						messageList: this.messages[inst_name]
 					});
 				}
@@ -711,12 +708,12 @@ class DataflashParser {
 			// let's not send FMT as it is not useful for users...
 			// (and because we need the data and we can't access it after postData with transferables)
 			if (name.indexOf('FMT') === -1) {
-        this.postData({
-						messageType: name,
-						format: msg_FMT.Format,
-            multipliers: msg_FMT.multipliers,
-						messageList: this.messages[name]
-					})
+				this.postData({
+					messageType: name,
+					format: msg_FMT.Format,
+					multipliers: msg_FMT.multipliers,
+					messageList: this.messages[name]
+				});
 			}
 			self.postMessage({ percentage: 100 });
 		}
@@ -883,10 +880,9 @@ class DataflashParser {
 		return getModeMap(MAV_TYPE_FIXED_WING)?.[cmode];
 	}
 
-	concatTypedArrays<T extends { constructor: any; length: number; set: (arr: any, offset?: number) => void }>(
-		a: T,
-		b: T
-	): T {
+	concatTypedArrays<
+		T extends { constructor: any; length: number; set: (arr: any, offset?: number) => void }
+	>(a: T, b: T): T {
 		// a, b TypedArray of same type
 		const c = new (a.constructor as any)(a.length + b.length);
 		c.set(a, 0);
@@ -1101,7 +1097,10 @@ class DataflashParser {
 		return 0;
 	}
 
-	processData(data: ArrayBuffer, msgs?: string[]): { types: Record<string, MessageTypeInfo>; messages: Record<string, any> } {
+	processData(
+		data: ArrayBuffer,
+		msgs?: string[]
+	): { types: Record<string, MessageTypeInfo>; messages: Record<string, any> } {
 		this.buffer = data;
 		this.data = new DataView(this.buffer);
 		this.DfReader();
@@ -1115,7 +1114,8 @@ class DataflashParser {
 		for (const msg of this.FMT) {
 			if (msg && msg.Total_Length != 0) {
 				const fields = msg.Columns;
-				const complexFields: Record<string, { name: string; units: string; multiplier: number }> = {};
+				const complexFields: Record<string, { name: string; units: string; multiplier: number }> =
+					{};
 				for (let i = 0; i < fields.length; i++) {
 					complexFields[fields[i]] = {
 						name: fields[i],
@@ -1136,7 +1136,8 @@ class DataflashParser {
 					messageTypes[msg.Name].instances = {};
 					for (const instance of availableInstances) {
 						const inst_name = msg.Name + '[' + instance + ']';
-						(messageTypes[msg.Name].instances as Record<string | number, string>)[instance] = inst_name;
+						(messageTypes[msg.Name].instances as Record<string | number, string>)[instance] =
+							inst_name;
 						messageTypes[inst_name] = {
 							expressions: fields,
 							units: msg.units,
