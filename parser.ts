@@ -924,6 +924,7 @@ class DataflashParser {
 
 	populateUnits(): void {
 		const FMTU = this.get('FMTU');
+		if (!FMTU) return;
 		for (const index in FMTU.FmtType) {
 			const type = FMTU.FmtType[index];
 			this.FMT[type].units = [];
@@ -1105,12 +1106,7 @@ class DataflashParser {
 		this.data = new DataView(this.buffer);
 		this.DfReader();
 		const messageTypes: Record<string, MessageTypeInfo> = {};
-		try {
-			this.populateUnits();
-		} catch (e) {
-			console.log('error populating units');
-			console.log(e);
-		}
+		this.populateUnits();
 		for (const msg of this.FMT) {
 			if (msg && msg.Total_Length != 0) {
 				const fields = msg.Columns;
